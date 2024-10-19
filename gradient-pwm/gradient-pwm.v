@@ -8,7 +8,7 @@ module top (
         output [15:0] LED_PANEL);
 
         led_main #(
-            .FRAME_BITS(6),
+            .FRAME_BITS(13),
             .DELAY(1)
         ) main (
             .CLK(CLK),
@@ -20,7 +20,7 @@ endmodule
 module painter24(
         input        clk,
         input        reset,
-        input  [5:0] frame,
+        input  [12:0] frame,
         input  [7:0] subframe,
         input  [5:0] x,
         input  [5:0] y,
@@ -39,9 +39,9 @@ module painter24(
     reg [7:0] red, green, blue;
     always @(posedge clk)
         if (blank) begin
-            red   <= 0;
-            green <= 0;
-            blue  <= 0;
+            red   <= frame[9:2];
+            green <= frame[9:2];
+            blue  <= frame[9:2];
         end
         else begin
             red   <= (row[0] ? y_lo : 0) + (col[0] ? x_lo : 0);
