@@ -27,26 +27,33 @@ module painter24(
         output [23:0] rgb24);
 
     wire [7:0] red, green, blue;
-    reg [0:5] x_target, y_target;
 
     reg [24:0] divide;
-    //reg active;
-    reg [5:0] limit_x, limit_y;
+    reg [5:0] limit_x_div, limit_y_div;
+    reg [5:0] limit_x_sub, limit_y_sub;
+
+    reg [12:0] last_frame;
 
     always @(posedge clk) begin
         if (divide == 240000) begin
             divide <= 0;
-            limit_x <= limit_x + 1;
-            limit_y <= limit_y + (limit_x == 0);
+            limit_x_div <= limit_x_div + 1;
+            limit_y_div <= limit_y_div + (limit_x_div == 63);
             //active <= !active;
         end else begin
             divide <= divide + 1;
         end
+
+        if (last_frame != frame) begin
+            last_frame <= frame;
+            limit_x_sub <= limit_x_sub + 1;
+            limit_y_sub <= limit_y_sub + (limit_x_sub == 63);
+        end
     end
 
-    assign red = y == limit_y && x == limit_x ? 200 : 0;
-    assign green = 0; // y == limit_y ? 200 : 0;
-    assign blue = 0; // x == limit_x ? 200 : 0;
+    assign red = y == limit_y_div && x == limit_x_div ? 200 : 0;
+    assign green = y == limit_y_sub && x == limit_x_sub ? 200 : 0;
+    assign blue = 0; // x == limit_x_sub ? 200 : 0;
     assign rgb24 = {red, green, blue};
 
 endmodule
