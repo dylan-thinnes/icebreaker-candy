@@ -59,6 +59,7 @@ module game_logic (
     reg [14:0] divider;
     wire tick;
     assign tick = divider == 15'd0;
+    reg first_step;
 
     always @(posedge clk) begin
         if (!reset) begin
@@ -94,16 +95,20 @@ module game_logic (
                     divider <= 15'd0;
                     x <= 0;
                     y <= 0;
+                    first_step <= 1'b1;
                 end
                 SETUP_MAIN_LOOP: begin
                     // Main logic loop
-                    divider <= divider + 15'd1;
+                    divider <= divider + 15'd2;
                     ymode <= YMODE_ONE;
 
                     if (tick) begin
-                        x <= x + 1;
+                        first_step <= 1'b0;
+                        if (!first_step) begin
+                            x <= x + 1;
+                            y <= y + 1;
+                        end
                         wen_one <= 1'b1;
-                        y <= y + 1;
                         r <= 5'b11111;
                         g <= 6'b111111;
                         b <= 0;
@@ -173,8 +178,8 @@ module led_main #(
     wire        pll_clk;
     wire        pll_locked;
     wire        resetn;
-    wire  [23:0] rgb24_0;
-    wire  [23:0] rgb24_1;
+    wire [23:0] rgb24_0;
+    wire [23:0] rgb24_1;
     wire  [2:0] rgb3_0;
     wire  [2:0] rgb3_1;
     wire [eh:0] painter_counter;
@@ -241,8 +246,8 @@ module led_main #(
     assign wen0 = steal_subframe ? logic_wen0 : 1'b0;
     assign wen1 = steal_subframe ? logic_wen1 : 1'b0;
 
-    assign addr0 = steal_subframe ? logic_addr0 : {addr,x};
-    assign addr1 = steal_subframe ? logic_addr1 : {addr,x};
+    assign addr0 = steal_subframe ? logic_addr0 : {y0[4:0],x};
+    assign addr1 = steal_subframe ? logic_addr1 : {y1[4:0],x};
 
     // When a subframe is being stolen (used for logic), the pwm modules need to emit 0
     assign rgb24_0 = steal_subframe ? 24'd0 : {rdata0[15:11],3'b000,rdata0[10:5],2'b00,rdata0[4:0],3'b000};
