@@ -18,6 +18,7 @@ endmodule
 module game_logic (
     input clk,
     input active,
+    input reset,
     output [13:0] addr0,
     output [13:0] addr1,
     output [15:0] wdata0,
@@ -28,12 +29,12 @@ module game_logic (
     reg [1:0] setup_state;
 
     reg [5:0] x;
-    reg [5:0] y;
-    reg wen;
+    reg [4:0] y;
+    reg [1:0] wen;
     assign addr0 = {3'b00,y[4:0],x};
     assign addr1 = {3'b00,y[4:0],x};
-    assign wen0 = wen & ~y[5];
-    assign wen1 = wen & y[5];
+    assign wen0 = wen[0];
+    assign wen1 = wen[1];
 
     reg [4:0] r;
     reg [5:0] g;
@@ -42,47 +43,47 @@ module game_logic (
     assign wdata1 = {r,g,b};
 
     always @(posedge clk) begin
-        if (active) begin
+        if (!reset) begin
+            setup_state <= 2'b00;
+        end else if (active) begin
             case (setup_state)
                 2'b00: begin
                     x <= 0;
                     y <= 0;
-                    wen <= 1'b1;
-                    r <= 0;
-                    g <= 0;
-                    b <= 5'b11111;
+                    wen <= 2'b11;
+                    r <= 5'd0;
+                    g <= 6'd0;
+                    b <= 5'd0;
                     setup_state <= 2'b01;
+                    ;
                 end
                 2'b01: begin
                     x <= x + 1;
                     y <= y + (x == 6'b111111);
-                    wen <= 1'b1;
-                    r <= 0;
-                    g <= 0;
-                    b <= 6'b111111;
-                    if (x == 6'b111111 && y == 6'b111111) begin
+                    wen <= 2'b11;
+                    r <= 5'd0;
+                    g <= 6'd0;
+                    b <= 5'd0;
+                    if (x == 6'b111111 && y == 5'b11111) begin
                         setup_state <= 2'b10;
                     end
                 end
                 2'b10: begin
-                    x <= x + 1;
-                    y <= y + 1;
-                    wen <= 1'b1;
-                    r <= 5'b11111;
-                    g <= 0;
-                    b <= 0;
+                    setup_state <= 2'b11;
+                    // Main logic setup
                 end
                 2'b11: begin
+                    // Main logic loop
                     x <= x + 1;
                     y <= y + 1;
-                    wen <= 1'b1;
+                    wen <= 2'b11;
                     r <= 5'b11111;
-                    g <= 0;
+                    g <= 5'b111111;
                     b <= 0;
                 end
             endcase
         end else begin
-            wen <= 1'b0;
+            wen <= 2'b00;
         end
     end
 endmodule
@@ -196,6 +197,7 @@ module led_main #(
     game_logic game (
         .clk(pll_clk),
         .active(steal_subframe),
+        .reset(resetn),
         .addr0(logic_addr0),
         .addr1(logic_addr1),
         .wdata0(wdata0),
