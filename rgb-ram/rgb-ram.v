@@ -26,15 +26,29 @@ module game_logic (
     output wen0,
     output wen1
 );
+    // Setup state machine.
+    localparam
+        SETUP_TOP_LEFT = 0,
+        SETUP_BLANK_MEMORY = 1,
+        SETUP_MAIN_INIT = 2,
+        SETUP_MAIN_LOOP = 3;
+
     reg [1:0] setup_state;
 
+    // State machine.
+    localparam
+        YMODE_BOTH = 0,
+        YMODE_ONE = 1;
+
+    reg ymode;
     reg [5:0] x;
-    reg [4:0] y;
-    reg [1:0] wen;
+    reg [5:0] y;
+    reg wen_one;
+    reg [1:0] wen_both;
     assign addr0 = {3'b00,y[4:0],x};
     assign addr1 = {3'b00,y[4:0],x};
-    assign wen0 = wen[0];
-    assign wen1 = wen[1];
+    assign wen0 = ymode == YMODE_BOTH ? wen_both[0] : wen_one & ~y[5];
+    assign wen1 = ymode == YMODE_BOTH ? wen_both[1] : wen_one & y[5];
 
     reg [4:0] r;
     reg [5:0] g;
@@ -42,48 +56,65 @@ module game_logic (
     assign wdata0 = {r,g,b};
     assign wdata1 = {r,g,b};
 
+    reg [14:0] divider;
+    wire tick;
+    assign tick = divider == 15'd0;
+
     always @(posedge clk) begin
         if (!reset) begin
-            setup_state <= 2'b00;
+            setup_state <= SETUP_TOP_LEFT;
         end else if (active) begin
             case (setup_state)
-                2'b00: begin
+                SETUP_TOP_LEFT: begin
+                    ymode <= YMODE_BOTH;
                     x <= 0;
-                    y <= 0;
-                    wen <= 2'b11;
+                    y[4:0] <= 0;
+                    wen_both <= 2'b11;
                     r <= 5'd0;
                     g <= 6'd0;
                     b <= 5'd0;
-                    setup_state <= 2'b01;
-                    ;
+                    setup_state <= SETUP_BLANK_MEMORY;
                 end
-                2'b01: begin
+                SETUP_BLANK_MEMORY: begin
+                    ymode <= YMODE_BOTH;
                     x <= x + 1;
-                    y <= y + (x == 6'b111111);
-                    wen <= 2'b11;
+                    y[4:0] <= y[4:0] + (x == 6'b111111);
+                    wen_both <= 2'b11;
                     r <= 5'd0;
                     g <= 6'd0;
                     b <= 5'd0;
                     if (x == 6'b111111 && y == 5'b11111) begin
-                        setup_state <= 2'b10;
+                        setup_state <= SETUP_MAIN_INIT;
                     end
                 end
-                2'b10: begin
-                    setup_state <= 2'b11;
+                SETUP_MAIN_INIT: begin
+                    ymode <= YMODE_ONE;
                     // Main logic setup
+                    setup_state <= SETUP_MAIN_LOOP;
+                    divider <= 15'd0;
+                    x <= 0;
+                    y <= 0;
                 end
-                2'b11: begin
+                SETUP_MAIN_LOOP: begin
                     // Main logic loop
-                    x <= x + 1;
-                    y <= y + 1;
-                    wen <= 2'b11;
-                    r <= 5'b11111;
-                    g <= 5'b111111;
-                    b <= 0;
+                    divider <= divider + 15'd1;
+                    ymode <= YMODE_ONE;
+
+                    if (tick) begin
+                        x <= x + 1;
+                        wen_one <= 1'b1;
+                        y <= y + 1;
+                        r <= 5'b11111;
+                        g <= 6'b111111;
+                        b <= 0;
+                    end else begin
+                        wen_one <= 1'b0;
+                    end
                 end
             endcase
         end else begin
-            wen <= 2'b00;
+            wen_one <= 1'b0;
+            wen_both <= 2'b00;
         end
     end
 endmodule
