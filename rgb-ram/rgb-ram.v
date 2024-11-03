@@ -25,6 +25,8 @@ module game_logic (
     output wen0,
     output wen1
 );
+    reg [1:0] setup_state;
+
     reg [5:0] x;
     reg [5:0] y;
     reg wen;
@@ -33,19 +35,55 @@ module game_logic (
     assign wen0 = wen & ~y[5];
     assign wen1 = wen & y[5];
 
-    reg[4:0] r;
-    reg[5:0] g;
-    reg[4:0] b;
+    reg [4:0] r;
+    reg [5:0] g;
+    reg [4:0] b;
     assign wdata0 = {r,g,b};
     assign wdata1 = {r,g,b};
 
     always @(posedge clk) begin
-        x <= x + 1;
-        y <= y + 1;
-        wen <= active;
-        r <= 0;
-        g <= 0;
-        b <= 0;
+        if (active) begin
+            case (setup_state)
+                2'b00: begin
+                    x <= 0;
+                    y <= 0;
+                    wen <= 1'b1;
+                    r <= 0;
+                    g <= 0;
+                    b <= 5'b11111;
+                    setup_state <= 2'b01;
+                end
+                2'b01: begin
+                    x <= x + 1;
+                    y <= y + (x == 6'b111111);
+                    wen <= 1'b1;
+                    r <= 0;
+                    g <= 0;
+                    b <= 6'b111111;
+                    if (x == 6'b111111 && y == 6'b111111) begin
+                        setup_state <= 2'b10;
+                    end
+                end
+                2'b10: begin
+                    x <= x + 1;
+                    y <= y + 1;
+                    wen <= 1'b1;
+                    r <= 5'b11111;
+                    g <= 0;
+                    b <= 0;
+                end
+                2'b11: begin
+                    x <= x + 1;
+                    y <= y + 1;
+                    wen <= 1'b1;
+                    r <= 5'b11111;
+                    g <= 0;
+                    b <= 0;
+                end
+            endcase
+        end else begin
+            wen <= 1'b0;
+        end
     end
 endmodule
 
@@ -162,9 +200,13 @@ module led_main #(
         .addr1(logic_addr1),
         .wdata0(wdata0),
         .wdata1(wdata1),
-        .wen0(wen0),
-        .wen1(wen1)
+        .wen0(logic_wen0),
+        .wen1(logic_wen1)
     );
+
+    wire logic_wen0, logic_wen1;
+    assign wen0 = steal_subframe ? logic_wen0 : 1'b0;
+    assign wen1 = steal_subframe ? logic_wen1 : 1'b0;
 
     assign addr0 = steal_subframe ? logic_addr0 : {addr,x};
     assign addr1 = steal_subframe ? logic_addr1 : {addr,x};
