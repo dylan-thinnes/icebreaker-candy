@@ -3,15 +3,34 @@
 module top (
     input         CLK,
     input         BTN_N,
+    input         BTN1,
+    input         BTN2,
+    input         BTN3,
+    output        LED1,
+    output        LED2,
+    output        LED3,
+    output        LED4,
+    output        LED5,
     output [15:0] LED_PANEL
 );
+    wire [4:0] leds;
+    assign LED1 = leds[0];
+    assign LED2 = leds[1];
+    assign LED3 = leds[2];
+    assign LED4 = leds[3];
+    assign LED5 = leds[4];
+
     led_main #(
         .FRAME_BITS(13),
         .DELAY(1)
     ) main (
         .CLK(CLK),
         .resetn_btn(BTN_N),
-        .LED_PANEL(LED_PANEL)
+        .LED_PANEL(LED_PANEL),
+        .btn1_bouncy(BTN1),
+        .btn2_bouncy(BTN2),
+        .btn3_bouncy(BTN3),
+        .leds(leds),
     );
 endmodule
 
@@ -19,14 +38,18 @@ module game_logic (
     input clk,
     input active,
     input reset,
+    input left,
+    input forward,
+    input right,
     output [13:0] addr0,
     output [13:0] addr1,
     output [15:0] wdata0,
     output [15:0] wdata1,
     output wen0,
-    output wen1
+    output wen1,
+    output [4:0] leds
 );
-    // Setup state machine.
+    // Setup state machine
     localparam
         SETUP_TOP_LEFT = 0,
         SETUP_BLANK_MEMORY = 1,
@@ -35,7 +58,6 @@ module game_logic (
 
     reg [1:0] setup_state;
 
-    // State machine.
     localparam
         YMODE_BOTH = 0,
         YMODE_ONE = 1;
@@ -61,9 +83,51 @@ module game_logic (
     assign tick = divider == 15'd0;
     reg first_step;
 
+    reg [1:0] set_delta_x;
+    reg [1:0] set_delta_y;
+    wire [5:0] delta_x;
+    assign delta_x = {{4{set_delta_x[1]}},set_delta_x};
+    wire [5:0] delta_y;
+    assign delta_y = {{4{set_delta_y[1]}},set_delta_y};
+
+    assign leds[0] = WAITING == redraw_state;
+    assign leds[1] = CLEAR_MIDDLE == redraw_state;
+    assign leds[2] = CLEAR_RIGHT == redraw_state;
+    assign leds[3] = SET_MIDDLE == redraw_state;
+    assign leds[4] = AWAIT_LIFTED == redraw_state;
+
+    reg [1:0] next_delta_x;
+    reg [1:0] next_delta_y;
+
+    reg [5:0] cursor_x;
+    reg [5:0] cursor_y;
+
+    reg [5:0] next_cursor_x;
+    reg [5:0] next_cursor_y;
+
+    // Movement state machine
+    localparam
+        WAITING = 0,
+        CLEAR_MIDDLE = 1,
+        CLEAR_LEFT = 2,
+        CLEAR_TOP = 3,
+        CLEAR_RIGHT = 4,
+        SET_MIDDLE = 5,
+        SET_LEFT = 6,
+        SET_TOP = 7,
+        SET_RIGHT = 8,
+        AWAIT_LIFTED = 9;
+
+    reg [3:0] redraw_state;
+
     always @(posedge clk) begin
         if (!reset) begin
             setup_state <= SETUP_TOP_LEFT;
+            set_delta_x <= 2'b1;
+            set_delta_y <= 2'b0;
+            cursor_x <= 6'd32;
+            cursor_y <= 6'd32;
+            redraw_state <= WAITING;
         end else if (active) begin
             case (setup_state)
                 SETUP_TOP_LEFT: begin
@@ -99,22 +163,64 @@ module game_logic (
                 end
                 SETUP_MAIN_LOOP: begin
                     // Main logic loop
-                    divider <= divider + 15'd2;
+                    divider <= divider + 15'd1;
                     ymode <= YMODE_ONE;
 
-                    if (tick) begin
-                        first_step <= 1'b0;
-                        if (!first_step) begin
-                            x <= x + 1;
-                            y <= y + 1;
+                    case (redraw_state)
+                        WAITING: begin
+                            wen_one <= 1'b0;
+                            //if (forward) begin
+                            //    next_cursor_x <= cursor_x + delta_x;
+                            //    next_cursor_y <= cursor_y + delta_y;
+                            //    redraw_state <= CLEAR_MIDDLE;
+                            //end else 
+                            if (forward) begin
+                                next_cursor_x <= cursor_x + delta_x;
+                                next_cursor_y <= cursor_y + delta_y;
+                                redraw_state <= CLEAR_MIDDLE;
+                            end else if (left) begin // counterclockwise
+                                next_delta_x <= -set_delta_y;
+                                next_delta_y <=  set_delta_x;
+                                redraw_state <= CLEAR_MIDDLE;
+                            end else if (right) begin // clockwise
+                                next_delta_x <=  set_delta_y;
+                                next_delta_y <= -set_delta_x;
+                                redraw_state <= CLEAR_MIDDLE;
+                            end
                         end
-                        wen_one <= 1'b1;
-                        r <= 5'b11111;
-                        g <= 6'b111111;
-                        b <= 0;
-                    end else begin
-                        wen_one <= 1'b0;
-                    end
+                        CLEAR_MIDDLE: begin
+                            wen_one <= 1'b1;
+                            x <= cursor_x;
+                            y <= cursor_y;
+                            r <= 0;
+                            g <= 0;
+                            b <= 0;
+                            redraw_state <= CLEAR_RIGHT;
+                        end
+                        CLEAR_RIGHT: begin
+                            wen_one <= 1'b0;
+                            set_delta_x <= next_delta_x;
+                            set_delta_y <= next_delta_y;
+                            cursor_x <= next_cursor_x;
+                            cursor_y <= next_cursor_y;
+                            redraw_state <= SET_MIDDLE;
+                        end
+                        SET_MIDDLE: begin
+                            wen_one <= 1'b1;
+                            x <= cursor_x;
+                            y <= cursor_y;
+                            r <= 5'b11111;
+                            g <= 6'b111111;
+                            b <= 5'b11111;
+                            redraw_state <= AWAIT_LIFTED;
+                        end
+                        AWAIT_LIFTED: begin
+                            wen_one <= 1'b0;
+                            if (!forward & !left & !right) begin
+                                redraw_state <= WAITING;
+                            end
+                        end
+                    endcase
                 end
             endcase
         end else begin
@@ -142,9 +248,14 @@ module led_main #(
     ) (
         input CLK,
         input resetn_btn,
+        input btn1_bouncy,
+        input btn2_bouncy,
+        input btn3_bouncy,
+        output [4:0] leds,
         output pll_clk,
         output reset,
-        output [15:0] LED_PANEL);
+        output [15:0] LED_PANEL
+    );
 
     // Dimensions
     localparam db = $clog2(DELAY); // delay bits
@@ -239,7 +350,11 @@ module led_main #(
         .wdata0(wdata0),
         .wdata1(wdata1),
         .wen0(logic_wen0),
-        .wen1(logic_wen1)
+        .wen1(logic_wen1),
+        .left(btn3),
+        .forward(btn2),
+        .right(btn1),
+        .leds(leds)
     );
 
     wire logic_wen0, logic_wen1;
@@ -310,6 +425,24 @@ module led_main #(
         .clk_pin(CLK),
         .locked(pll_locked),
         .pll_clk(pll_clk));
+
+    wire btn1;
+    button_debouncer db1 (
+        .clk(pll_clk),
+        .button_pin(btn1_bouncy),
+        .level(btn1));
+
+    wire btn2;
+    button_debouncer db2 (
+        .clk(pll_clk),
+        .button_pin(btn2_bouncy),
+        .level(btn2));
+
+    wire btn3;
+    button_debouncer db3 (
+        .clk(pll_clk),
+        .button_pin(btn3_bouncy),
+        .level(btn3));
 
     generate
         if (USE_RESETN_BUTTON) begin
