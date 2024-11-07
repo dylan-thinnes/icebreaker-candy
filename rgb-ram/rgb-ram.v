@@ -90,11 +90,11 @@ module game_logic (
     wire [5:0] delta_y;
     assign delta_y = {{4{set_delta_y[1]}},set_delta_y};
 
-    assign leds[0] = WAITING == redraw_state;
-    assign leds[1] = CLEAR_MIDDLE == redraw_state;
-    assign leds[2] = CLEAR_RIGHT == redraw_state;
-    assign leds[3] = SET_MIDDLE == redraw_state;
-    assign leds[4] = AWAIT_LIFTED == redraw_state;
+    //assign leds[0] = WAITING == redraw_state;
+    //assign leds[1] = CLEAR_MIDDLE == redraw_state;
+    //assign leds[2] = CLEAR_RIGHT == redraw_state;
+    //assign leds[3] = SET_MIDDLE == redraw_state;
+    //assign leds[4] = AWAIT_LIFTED == redraw_state;
 
     reg [1:0] next_delta_x;
     reg [1:0] next_delta_y;
@@ -169,27 +169,28 @@ module game_logic (
                     case (redraw_state)
                         WAITING: begin
                             wen_one <= 1'b0;
-                            //if (forward) begin
-                            //    next_cursor_x <= cursor_x + delta_x;
-                            //    next_cursor_y <= cursor_y + delta_y;
-                            //    redraw_state <= CLEAR_MIDDLE;
-                            //end else 
                             if (forward) begin
                                 next_cursor_x <= cursor_x + delta_x;
                                 next_cursor_y <= cursor_y + delta_y;
+                                next_delta_x <= set_delta_x;
+                                next_delta_y <= set_delta_y;
                                 redraw_state <= CLEAR_MIDDLE;
-                            end else if (left) begin // counterclockwise
+                            end else if (right) begin // counterclockwise
+                                next_cursor_x <= cursor_x;
+                                next_cursor_y <= cursor_y;
                                 next_delta_x <= -set_delta_y;
                                 next_delta_y <=  set_delta_x;
                                 redraw_state <= CLEAR_MIDDLE;
-                            end else if (right) begin // clockwise
+                            end else if (left) begin // clockwise
+                                next_cursor_x <= cursor_x;
+                                next_cursor_y <= cursor_y;
                                 next_delta_x <=  set_delta_y;
                                 next_delta_y <= -set_delta_x;
                                 redraw_state <= CLEAR_MIDDLE;
                             end
                         end
                         CLEAR_MIDDLE: begin
-                            wen_one <= 1'b1;
+                            wen_one <= 1'b0;
                             x <= cursor_x;
                             y <= cursor_y;
                             r <= 0;
@@ -216,7 +217,7 @@ module game_logic (
                         end
                         AWAIT_LIFTED: begin
                             wen_one <= 1'b0;
-                            if (!forward & !left & !right) begin
+                            if ((!forward | tick) & !left & !right) begin
                                 redraw_state <= WAITING;
                             end
                         end
