@@ -120,6 +120,15 @@ module game_logic (
 
     reg [3:0] redraw_state;
 
+    reg [7:0] hue;
+    wire [7:0] cursor_red, cursor_green, cursor_blue;
+    hue2rgb #(.POWER(1)) mk_rgb (
+        .hue(hue),
+        .red(cursor_red),
+        .green(cursor_green),
+        .blue(cursor_blue)
+    );
+
     always @(posedge clk) begin
         if (!reset) begin
             setup_state <= SETUP_TOP_LEFT;
@@ -170,6 +179,7 @@ module game_logic (
                         WAITING: begin
                             wen_one <= 1'b0;
                             if (forward) begin
+                                hue <= hue + 8'd4;
                                 next_cursor_x <= cursor_x + delta_x;
                                 next_cursor_y <= cursor_y + delta_y;
                                 next_delta_x <= set_delta_x;
@@ -210,9 +220,9 @@ module game_logic (
                             wen_one <= 1'b1;
                             x <= cursor_x;
                             y <= cursor_y;
-                            r <= 5'b11111;
-                            g <= 6'b111111;
-                            b <= 5'b11111;
+                            r <= cursor_red[7:3];
+                            g <= cursor_green[7:2];
+                            b <= cursor_blue[7:3];
                             redraw_state <= AWAIT_LIFTED;
                         end
                         AWAIT_LIFTED: begin
@@ -901,3 +911,39 @@ module ddr (
         .D_OUT_1(data[1]));
 
 endmodule // ddr
+
+module hue2rgb#(
+    parameter [2:0] POWER = 3'd6 // from 1 to 6
+)(
+    input  [7:0] hue,
+    output [7:0] red,
+    output [7:0] green,
+    output [7:0] blue);
+
+    hsv_channel #(.POWER(POWER)) red_driver(
+        .hue(hue + 8'd85),
+        .value(red)
+    );
+    hsv_channel #(.POWER(POWER)) green_driver(
+        .hue(hue),
+        .value(green)
+    );
+    hsv_channel #(.POWER(POWER)) blue_driver(
+        .hue(hue + 8'd170),
+        .value(blue)
+    );
+endmodule
+
+module hsv_channel#(
+        parameter [2:0] POWER = 3'd6 // from 1 to 6
+)(
+        input  [7:0] hue,
+        output [7:0] value);
+
+    assign value =
+                hue < 43  ? hue * POWER
+              : hue < 128 ? 43 * POWER
+              : hue < 170 ? (170 - hue) * POWER
+                          : 0;
+
+endmodule
