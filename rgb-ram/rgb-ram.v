@@ -200,16 +200,39 @@ module game_logic (
                             end
                         end
                         CLEAR_MIDDLE: begin
-                            wen_one <= 1'b0;
+                            wen_one <= 1'b1;
                             x <= cursor_x;
                             y <= cursor_y;
+                            r <= 0;
+                            g <= 0;
+                            b <= 0;
+                            redraw_state <= CLEAR_LEFT;
+                        end
+                        CLEAR_LEFT: begin
+                            wen_one <= 1'b1;
+                            x <= cursor_x + delta_y;
+                            y <= cursor_y - delta_x;
+                            r <= 0;
+                            g <= 0;
+                            b <= 0;
+                            redraw_state <= CLEAR_TOP;
+                        end
+                        CLEAR_TOP: begin
+                            wen_one <= 1'b1;
+                            x <= cursor_x + delta_x;
+                            y <= cursor_y + delta_y;
                             r <= 0;
                             g <= 0;
                             b <= 0;
                             redraw_state <= CLEAR_RIGHT;
                         end
                         CLEAR_RIGHT: begin
-                            wen_one <= 1'b0;
+                            wen_one <= 1'b1;
+                            x <= cursor_x - delta_y;
+                            y <= cursor_y + delta_x;
+                            r <= 0;
+                            g <= 0;
+                            b <= 0;
                             set_delta_x <= next_delta_x;
                             set_delta_y <= next_delta_y;
                             cursor_x <= next_cursor_x;
@@ -220,6 +243,33 @@ module game_logic (
                             wen_one <= 1'b1;
                             x <= cursor_x;
                             y <= cursor_y;
+                            r <= cursor_red[7:3];
+                            g <= cursor_green[7:2];
+                            b <= cursor_blue[7:3];
+                            redraw_state <= SET_LEFT;
+                        end
+                        SET_LEFT: begin
+                            wen_one <= 1'b1;
+                            x <= cursor_x + delta_y;
+                            y <= cursor_y - delta_x;
+                            r <= cursor_red[7:3];
+                            g <= cursor_green[7:2];
+                            b <= cursor_blue[7:3];
+                            redraw_state <= SET_TOP;
+                        end
+                        SET_TOP: begin
+                            wen_one <= 1'b1;
+                            x <= cursor_x + delta_x;
+                            y <= cursor_y + delta_y;
+                            r <= cursor_red[7:3];
+                            g <= cursor_green[7:2];
+                            b <= cursor_blue[7:3];
+                            redraw_state <= SET_RIGHT;
+                        end
+                        SET_RIGHT: begin
+                            wen_one <= 1'b1;
+                            x <= cursor_x - delta_y;
+                            y <= cursor_y + delta_x;
                             r <= cursor_red[7:3];
                             g <= cursor_green[7:2];
                             b <= cursor_blue[7:3];
