@@ -4,13 +4,10 @@ GEN_GAMMA = $(TABLES_DIR)/gen_gamma_table
 
 all: $(PROJ).rpt $(PROJ).bin
 
-top.v: src/Example/Project.hs
-	cabal run clash -- $^ --verilog
-
-%.blif: $(PROJ_DIR)/%.v $(ADD_SRC)
+%.blif: %.v $(ADD_SRC)
 	yosys -ql $*.log -p 'synth_ice40 -top top -blif $@' $< $(ADD_SRC)
 
-%.json: $(PROJ_DIR)/%.v $(ADD_SRC)
+%.json: %.v $(ADD_SRC)
 	yosys -ql $*.log -p 'synth_ice40 -top top -json $@' $< $(ADD_SRC)
 
 ifeq ($(USE_ARACHNEPNR),)

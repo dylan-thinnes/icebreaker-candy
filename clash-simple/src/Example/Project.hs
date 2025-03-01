@@ -10,7 +10,7 @@ import Data.Proxy
 
 -- Create a domain with the frequency of your input clock. For this example we used
 -- 50 MHz.
-createDomain vSystem{vName="Dom50", vPeriod=hzToPeriod 30e6, vResetPolarity=ActiveHigh}
+createDomain vSystem{vName="Dom30", vPeriod=hzToPeriod 30e6, vResetPolarity=ActiveLow}
 
 -- | @topEntity@ is Clash@s equivalent of @main@ in other programming languages.
 -- Clash will look for it when compiling "Example.Project" and translate it to
@@ -19,15 +19,21 @@ createDomain vSystem{vName="Dom50", vPeriod=hzToPeriod 30e6, vResetPolarity=Acti
 -- hand-wavily, a @topEntity@ must be translatable to a static number of wires.
 --
 -- Top entities must be monomorphic, meaning we have to specify all type variables.
--- In this case, we are using the @Dom50@ domain, which we created with @createDomain@
+-- In this case, we are using the @Dom30@ domain, which we created with @createDomain@
 -- and we are using 8-bit unsigned numbers.
-topEntity ::
-  Clock Dom50 ->
-  Reset Dom50 ->
-  Signal Dom50 Bit ->
-  Signal Dom50 (Bit, Bit, Bit, Bit, Bit)
-topEntity clk rst bitInput =
-  unpackVec5 . bitCoerce @(Unsigned 5) @(Vec 5 Bit) <$> exposeClockResetEnable accum clk rst enableGen (bitToBool <$> bitInput)
+topEntity
+  :: Clock Dom30
+  -> Reset Dom30
+  -> Signal Dom30 Bit
+  -> Signal Dom30 Bit
+  -> Signal Dom30 Bit
+  -> Signal Dom30 (Unsigned 14)
+  -> Signal Dom30 (BitVector 16)
+  -> Signal Dom30 Bit
+  -> Signal Dom30 (BitVector 16)
+  -> Signal Dom30 (Bit, Bit, Bit, Bit, Bit)
+topEntity clk resetn btn1 btn2 btn3 addr wdata wen rdata =
+  unpackVec5 . bitCoerce @(Unsigned 5) @(Vec 5 Bit) <$> exposeClockResetEnable accum clk resetn enableGen (bitToBool <$> btn1)
 
 bitToUnsigned :: KnownNat n => Bit -> Unsigned n
 bitToUnsigned = resize . bitCoerce
@@ -38,12 +44,26 @@ unpackVec5 (a :> b :> c :> d :> e :> Nil) = (a, b, c, d, e)
 -- To specify the names of the ports of our top entity, we create a @Synthesize@ annotation.
 {-# ANN topEntity
   (Synthesize
-    { t_name = "top"
-    , t_inputs = [ PortName "CLK"
-                 , PortName "BTN_N"
-                 , PortName "BTN1"
+    { t_name = "clash_top"
+    , t_inputs = [ PortName "clk"
+                 , PortName "resetn"
+
+                 , PortName "btn1"
+                 , PortName "btn2"
+                 , PortName "btn3"
+
+                 , PortName "ram_addr"
+                 , PortName "ram_wdata"
+                 , PortName "ram_wen"
+                 , PortName "ram_rdata"
                  ]
-    , t_output = PortProduct "" [PortName "LED1", PortName "LED2", PortName "LED3", PortName "LED4", PortName "LED5"]
+    , t_output = PortProduct ""
+                 [ PortName "led1"
+                 , PortName "led2"
+                 , PortName "led3"
+                 , PortName "led4"
+                 , PortName "led5"
+                 ]
     }) #-}
 
 -- Make sure GHC does not apply any optimizations to the boundaries of the design.
