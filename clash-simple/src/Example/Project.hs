@@ -2,6 +2,7 @@
 -- our code to be warning-free.
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Example.Project where
 
@@ -24,20 +25,35 @@ createDomain vSystem{vName="Dom30", vPeriod=hzToPeriod 30e6, vResetPolarity=Acti
 topEntity
   :: Clock Dom30
   -> Reset Dom30
-  -> Signal Dom30 Bit
-  -> Signal Dom30 Bit
-  -> Signal Dom30 Bit
-  -> Signal Dom30 (Unsigned 14)
+  -> Signal Dom30 Bool
+  -> Signal Dom30 Bool
+  -> Signal Dom30 Bool
   -> Signal Dom30 (BitVector 16)
-  -> Signal Dom30 Bit
-  -> Signal Dom30 (BitVector 16)
-  -> Signal Dom30 (Bit, Bit, Bit, Bit, Bit)
-topEntity clk resetn btn1 btn2 btn3 addr wdata wen rdata =
-  unpackVec5 . bitCoerce @(Unsigned 5) @(Vec 5 Bit) <$> exposeClockResetEnable accum clk resetn enableGen (bitToBool <$> btn1)
+  -> Signal Dom30
+      (Bit, Bit, Bit, Bit, Bit, Unsigned 14, BitVector 16, Bit)
+topEntity clk resetn btn1 btn2 btn3 rdata =
+  postprocess <$>
+  exposeClockResetEnable sam
+    clk resetn enableGen
+    btn1
+    btn2
+    btn3
+    rdata
+  where
+    postprocess
+      :: Outputs
+      -> (Bit, Bit, Bit, Bit, Bit, Unsigned 14, BitVector 16, Bit)
+    postprocess Outputs {..} =
+      let (l1, l2, l3, l4, l5) =
+            bitCoerce @(Unsigned 5) @(Bit, Bit, Bit, Bit, Bit) display
+          (wen, wdata) =
+            case ramWrite of
+              Nothing -> (False, 0)
+              Just v -> (True, v)
+      in
+      (l1, l2, l3, l4, l5, ramAddress, wdata, boolToBit wen)
 
-bitToUnsigned :: KnownNat n => Bit -> Unsigned n
-bitToUnsigned = resize . bitCoerce
-
+--unpackVec5 . bitCoerce @(Unsigned 5) @(Vec 5 Bit) <$> 
 unpackVec5 :: Vec 5 a -> (a, a, a, a, a)
 unpackVec5 (a :> b :> c :> d :> e :> Nil) = (a, b, c, d, e)
 
@@ -52,9 +68,6 @@ unpackVec5 (a :> b :> c :> d :> e :> Nil) = (a, b, c, d, e)
                  , PortName "btn2"
                  , PortName "btn3"
 
-                 , PortName "ram_addr"
-                 , PortName "ram_wdata"
-                 , PortName "ram_wen"
                  , PortName "ram_rdata"
                  ]
     , t_output = PortProduct ""
@@ -63,6 +76,9 @@ unpackVec5 (a :> b :> c :> d :> e :> Nil) = (a, b, c, d, e)
                  , PortName "led3"
                  , PortName "led4"
                  , PortName "led5"
+                 , PortName "ram_addr"
+                 , PortName "ram_wdata"
+                 , PortName "ram_wen"
                  ]
     }) #-}
 
@@ -81,21 +97,80 @@ debouncer _ = mealy f (0, False)
                  else ((counter + 1, out), out)
          else ((0, out), out)
 
--- | A simple accumulator that works on unsigned numbers of any size.
--- It has hidden clock, reset, and enable signals.
-accum ::
-  (HiddenClockResetEnable dom, KnownNat n) =>
-  Signal dom Bool ->
-  Signal dom (Unsigned n)
-accum = mealy accumT (S 3 False) . debouncer (Proxy @10)
- where
-  accumT S {lastButton, value} button =
-    let value' = if not lastButton && button then value + 1 else value
-    in
-    (S value' button, value')
-
-data S n = S
-  { value :: Unsigned n
-  , lastButton :: Bool
+data Outputs = Outputs
+  { ramAddress :: Unsigned 14
+  , ramWrite :: Maybe (BitVector 16)
+  , display :: Unsigned 5
   }
   deriving (Show, Eq, Generic, NFDataX)
+
+data Mode
+  = SetAddr
+  | ReadValue
+  | WriteValue (Unsigned 5)
+  deriving (Show, Eq, Generic, NFDataX)
+
+data State = State
+  { mode :: Mode
+  , address :: Unsigned 5
+  , lastBtn1 :: Bool
+  , lastBtn2 :: Bool
+  , lastBtn3 :: Bool
+  }
+  deriving (Show, Eq, Generic, NFDataX)
+
+sam
+  :: (HiddenClockResetEnable dom)
+  => Signal dom Bool -> Signal dom Bool -> Signal dom Bool -- buttons
+  -> Signal dom (BitVector 16)
+  -> Signal dom Outputs
+sam bouncyBtn1 bouncyBtn2 bouncyBtn3 rdata =
+  mealy f (State SetAddr 0 False False False) inp
+  where
+    f :: State -> (Bool, Bool, Bool, BitVector 16) -> (State, Outputs)
+    f state@(State {..}) (btn1, btn2, btn3, rdata) =
+      let displayRData = bitCoerce (resize @BitVector @16 @5 rdata)
+          state' = state {lastBtn1 = btn1, lastBtn2 = btn2, lastBtn3 = btn3}
+       in case mode of
+            SetAddr | btn1 && not lastBtn1 ->
+              ( state' {address = address + 1}
+              , Outputs 0 Nothing $ address + 1
+              )
+            SetAddr | btn2 && not lastBtn2 ->
+              ( state' {mode = WriteValue 0}
+              , Outputs 0 Nothing 0
+              )
+            SetAddr | btn3 ->
+              ( state' {mode = ReadValue}
+              , Outputs (resize address) Nothing address
+              )
+            SetAddr ->
+              ( state'
+              , Outputs 0 Nothing address
+              )
+            ReadValue | not btn3 ->
+              ( state' {mode = SetAddr}
+              , Outputs 0 Nothing displayRData
+              )
+            ReadValue ->
+              ( state'
+              , Outputs (resize address) Nothing displayRData
+              )
+            WriteValue n | btn1 && not lastBtn1 ->
+              ( state' {mode = WriteValue $ n + 1}
+              , Outputs 0 Nothing n
+              )
+            WriteValue n | btn2 && not lastBtn2 ->
+              ( state' {mode = SetAddr}
+              , Outputs (resize address) (Just (resize (bitCoerce n))) n
+              )
+            WriteValue n ->
+              ( state'
+              , Outputs 0 Nothing n
+              )
+    inp =
+      (,,,)
+        <$> (debouncer (Proxy @10) bouncyBtn1)
+        <*> (debouncer (Proxy @10) bouncyBtn2)
+        <*> (debouncer (Proxy @10) bouncyBtn3)
+        <*> rdata
