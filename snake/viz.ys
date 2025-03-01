@@ -1,0 +1,3 @@
+read_verilog snake.v
+hierarchy -auto-top
+show -viewer none -format dot -prefix ./show
