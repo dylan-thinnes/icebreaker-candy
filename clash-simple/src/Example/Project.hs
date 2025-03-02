@@ -8,6 +8,7 @@ module Example.Project where
 
 import Clash.Prelude
 import Data.Proxy
+import Data.Maybe
 
 -- Create a domain with the frequency of your input clock. For this example we used
 -- 50 MHz.
@@ -119,13 +120,29 @@ data State = State
   }
   deriving (Show, Eq, Generic, NFDataX)
 
+clearMemory
+  :: (HiddenClockResetEnable dom)
+  => Signal dom (Maybe Outputs)
+clearMemory =
+    let a = register (Just 0) ((>>= counter) <$> a)
+    in
+    fmap clearValue <$> a
+  where
+    counter :: Unsigned 5 -> Maybe (Unsigned 5)
+    counter i = if i == maxBound then Nothing else Just (i + 1)
+
+    clearValue :: Unsigned 5 -> Outputs
+    clearValue i = Outputs (resize i) (Just 0) 0
+
 sam
   :: (HiddenClockResetEnable dom)
   => Signal dom Bool -> Signal dom Bool -> Signal dom Bool -- buttons
   -> Signal dom (BitVector 16)
   -> Signal dom Outputs
 sam bouncyBtn1 bouncyBtn2 bouncyBtn3 rdata =
-  mealy f (State SetAddr 0 False False False) inp
+  fromMaybe
+    <$> (mealy f (State SetAddr 0 False False False) inp)
+    <*> clearMemory
   where
     f :: State -> (Bool, Bool, Bool, BitVector 16) -> (State, Outputs)
     f state@(State {..}) (btn1, btn2, btn3, rdata) =
